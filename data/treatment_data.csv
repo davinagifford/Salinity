@@ -1,0 +1,91 @@
+﻿Treatment,Day,Salinity
+Control,1,36
+Control,2,36
+Control,3,36
+Control,4,36
+Control,5,36
+Control,6,36
+Control,7,36
+Control,8,36
+Control,9,36
+Control,10,36
+Control,11,36
+Control,12,36
+Control,13,36
+Control,14,36
+Control,15,36
+Procedural control,1,36
+Procedural control,2,36
+Procedural control,3,36
+Procedural control,4,36
+Procedural control,5,36
+Procedural control,6,36
+Procedural control,7,36
+Procedural control,8,36
+Procedural control,9,36
+Procedural control,10,36
+Procedural control,11,36
+Procedural control,12,36
+Procedural control,13,36
+Procedural control,14,36
+Procedural control,15,36
+20,1,36
+20,2,20
+20,3,20
+20,4,20
+20,5,20
+20,6,23
+20,7,26
+20,8,29
+20,9,32
+20,10,36
+20,11,36
+20,12,36
+20,13,36
+20,14,36
+20,15,36
+15,1,36
+15,2,15
+15,3,15
+15,4,15
+15,5,15
+15,6,23
+15,7,23
+15,8,27
+15,9,31
+15,10,36
+15,11,36
+15,12,36
+15,13,36
+15,14,36
+15,15,36
+10,1,36
+10,2,10
+10,3,10
+10,4,10
+10,5,10
+10,6,15
+10,7,20
+10,8,25
+10,9,30
+10,10,36
+10,11,36
+10,12,36
+10,13,36
+10,14,36
+10,15,36
+5,1,35
+5,2,5
+5,3,5
+5,4,5
+5,5,5
+5,6,11
+5,7,17
+5,8,23
+5,9,30
+5,10,36
+5,11,36
+5,12,36
+5,13,36
+5,14,36
+5,15,36
