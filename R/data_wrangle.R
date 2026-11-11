@@ -16,6 +16,17 @@ library(lubridate)
 raw_data <- read.csv("data/Salinity_experiment_data.csv")
 treatments <- read.csv("data/treatment_data.csv")
 
+# update treatment data 
+
+treatments <- treatments %>% 
+  mutate(Treatment = case_when(Treatment == "10" ~ "10 ppt",
+                               Treatment == "20" ~ "20 ppt",
+                               Treatment == "15" ~ "15 ppt",
+                               Treatment == "5" ~ "5 ppt",
+                               Treatment == "Control" ~ "Control",
+                               Treatment == "Procedural control" ~ "Procedural control",
+                               ))
+
 # rename columns
 raw_data <- raw_data %>%
   rename(life_stage = Life.stage)
@@ -31,10 +42,33 @@ medusae <- raw_data %>%
 # tidy polyp data
 polyps <- polyps %>%
   select(where(~ !all(is.na(.) | trimws(as.character(.)) == ""))) %>%
-  rename(salinity_level = Salinity.level., polyp_number = Number.of.polyps.present, buds = How.many.polyps.with.buds., dead = Number.of.dead.polyps, strobilation = Stobilation.) 
-  
-head(polyps)
+  rename(salinity_level = Salinity.level., replicate = Replicate, polyp_number = Number.of.polyps.present, buds = How.many.polyps.with.buds., dead = Number.of.dead.polyps, strobilation = Stobilation.) 
 
+polyps <- polyps %>% 
+  mutate(
+    Date = as.Date(mdy_hms(Start.time)),
+    Day = as.numeric(Date - min(Date, na.rm = TRUE)) + 1,
+    salinity_level = case_when(salinity_level == "Black" ~ "Procedural control",
+                               salinity_level == "Blue" ~ "Control",
+                               salinity_level == "White" ~ "5 ppt",
+                               salinity_level == "Green" ~ "10 ppt",
+                               salinity_level == "Red" ~ "15 ppt",
+                               salinity_level == "Yellow" ~ "20 ppt",
+                               TRUE ~ "10 ppt") # a row was being changed to NA instead of green so this is to fix that.
+  ) 
+  
+
+polyps_ordered <- polyps %>% 
+  filter(replicate != "6 (spare)") %>%
+  mutate(replicate = as.numeric(replicate)) %>%
+  arrange(Date, Day, salinity_level, replicate) %>%
+  select(
+    Date, Day, salinity_level, replicate,
+    polyp_number, buds, dead, strobilation, Any.notes.
+  ) 
+  
+head(polyps_ordered)
+summary(polyps_ordered)
 
 # tidy medusa data
 medusae <- medusae %>%
@@ -46,16 +80,15 @@ head(medusae)
 medusae <- medusae %>%
   mutate(
     Date = as.Date(mdy_hms(Start.time)),
-    Day = as.numeric(Date - min(Date, na.rm = TRUE)) + 1
-  )
-
-medusae %>%
-  arrange(salinity_level, replicate, Day) %>%
-  select(
-    Day, Date, salinity_level, replicate,
-    Alive., bell_diam, YII, Any.notes
-  ) %>%
-  head(30)
+    Day = as.numeric(Date - min(Date, na.rm = TRUE)) + 1,
+    salinity_level = case_when(salinity_level == "Black" ~ "Procedural control",
+                               salinity_level == "Blue" ~ "Control",
+                               salinity_level == "White" ~ "5 ppt",
+                               salinity_level == "Green" ~ "10 ppt",
+                               salinity_level == "Red" ~ "15 ppt",
+                               salinity_level == "Yellow" ~ "20 ppt"),
+    
+  ) 
 
 # Because medusae where measured twice, once for YII and once for daim, need to combine the data into a single row for each replicate
 
@@ -71,3 +104,7 @@ medusae_combined <- medusae %>%
     .groups = "drop"
   )
 
+# save tidied data for ease of use
+saveRDS(medusae_combined, file = "var/medusae_tidy.rds")
+saveRDS(polyps_ordered, file = "var/polyp_tidy.rds")
+saveRDS(treatments, file = "var/treatment_tidy.rds")
