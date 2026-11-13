@@ -4,7 +4,7 @@
 #
 # Created: 13 October 2026
 # Created by: Davina Gifford
-# Updated: 10 November 2026
+# Updated: 13 November 2026
 # Updated by: Davina Gifford
 
 # load libraries
@@ -66,6 +66,14 @@ polyps <- polyps %>%
     )
   ) 
 
+# insert row of missing data
+missing_dat <- polyps[18,]
+
+missing_dat$replicate <- "1"
+missing_dat$polyp_number <- 4
+
+polyps <- rbind(polyps, missing_dat)
+
 # update values in columns with NA to 0
 
 polyps <- polyps %>% 
@@ -76,9 +84,13 @@ polyps <- polyps %>%
 polyps_ordered <- polyps %>% 
   filter(replicate != "6 (spare)") %>%
   mutate(replicate = as.numeric(replicate)) %>%
+  mutate(phase = case_when(Day <= 2 ~ "Acclimation",
+                           Day <= 6 ~ "Exposure",
+                           Day <= 10 ~ "Recovery",
+                           Day < 16 ~ "Post-Recovery")) %>% 
   arrange(Date, Day, salinity_level, replicate) %>%
   select(
-    Date, Day, salinity_level, replicate,
+    Date, Day, phase, salinity_level, replicate,
     polyp_number, buds, dead, strobilation, Any.notes.
   ) 
   
