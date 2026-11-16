@@ -29,10 +29,15 @@ plot_data <- polyp_data %>%
   left_join(
     treatment_data,
     by = c(
-      "salinity_level" = "Treatment",
+      "salinity_level" = "salinity_level",
       "Day" = "Day"
     )
   )
+
+# update Day number for plotting
+
+plot_data <- plot_data %>% 
+  mutate(plot_day = Day - 2)
 
 # plot the polyp numbers for the individual replicates 
 
@@ -55,10 +60,10 @@ for(i in seq_len(nrow(replicates))) {
   
   print(
     dat %>%
-      select(Day, salinity_level, replicate, polyp_number)
+      select(plot_day, salinity_level, replicate, polyp_number)
   )
   
-  p <- ggplot(dat, aes(x = Day)) +
+  p <- ggplot(dat, aes(x = plot_day)) +
     
     geom_line(
       aes(y = polyp_number),
@@ -88,7 +93,7 @@ for(i in seq_len(nrow(replicates))) {
     ) +
     
     scale_x_continuous(
-      breaks = 1:15
+      breaks = -1:15
     ) +
     
     theme_bw() +
@@ -104,9 +109,9 @@ for(i in seq_len(nrow(replicates))) {
   
   ggsave(
     filename = paste0(
-      "output/",
+      "output/num_polyps/",
       treatment_i,
-      "_rep",
+      "num_polyp_rep",
       replicate_i,
       ".png"
     ),
@@ -124,7 +129,7 @@ for(treatment_i in unique(plot_data$salinity_level)) {
   
   dat <- plot_data %>%
     filter(salinity_level == treatment_i) %>%
-    arrange(replicate, Day)
+    arrange(replicate, plot_day)
   
   scale_factor <- max(dat$polyp_number, na.rm = TRUE) / 40
   
@@ -134,7 +139,7 @@ for(treatment_i in unique(plot_data$salinity_level)) {
     Phase = c("Exposure", "Recovery")
   )
   
-  p <- ggplot(dat, aes(x = Day)) +
+  p <- ggplot(dat, aes(x = plot_day)) +
     
     # Treatment phases
     geom_rect(
@@ -212,7 +217,7 @@ for(treatment_i in unique(plot_data$salinity_level)) {
   
   ggsave(
     filename = paste0(
-      "output/",
+      "output/by_treatment/",
       treatment_i,
       "_polyps.png"
     ),
@@ -232,10 +237,10 @@ scale_factor <- max(plot_data$polyp_number, na.rm = TRUE) / 40
 
 # mean polyp values per treatment
 mean_data <- plot_data %>%
-  group_by(salinity_level, Day) %>%
+  group_by(salinity_level, plot_day) %>%
   summarise(
     mean_polyps = mean(polyp_number, na.rm = TRUE),
-    se = sd(polyp_number, na.rm = TRUE) / sqrt(n()),
+    sd = sd(polyp_number, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -243,7 +248,7 @@ mean_data <- plot_data %>%
 ggplot(
   plot_data,
   aes(
-    Day,
+    plot_day,
     polyp_number,
     colour = factor(replicate),
     group = replicate
@@ -327,7 +332,7 @@ ggplot(
 p <- ggplot(
   plot_data,
   aes(
-    x = Day,
+    x = plot_day,
     y = polyp_number,
     colour = factor(replicate),
     group = replicate
@@ -337,8 +342,8 @@ p <- ggplot(
   # Exposure period
   annotate(
     "rect",
-    xmin = 1.5,
-    xmax = 5.5,
+    xmin = -0.5,
+    xmax = 3.5,
     ymin = -Inf,
     ymax = Inf,
     fill = "firebrick",
@@ -348,21 +353,21 @@ p <- ggplot(
   # Recovery period
   annotate(
     "rect",
-    xmin = 5.5,
-    xmax = 10.5,
+    xmin = 3.5,
+    xmax = 8.5,
     ymin = -Inf,
     ymax = Inf,
     fill = "steelblue",
     alpha = 0.08
   ) +
   
-  # SE ribbon
+  # SD ribbon
   geom_ribbon(
     data = mean_data,
     aes(
-      x = Day,
-      ymin = mean_polyps - se,
-      ymax = mean_polyps + se,
+      x = plot_day,
+      ymin = mean_polyps - sd,
+      ymax = mean_polyps + sd,
       group = 1
     ),
     inherit.aes = FALSE,
@@ -385,7 +390,7 @@ p <- ggplot(
   geom_line(
     data = mean_data,
     aes(
-      x = Day,
+      x = plot_day,
       y = mean_polyps,
       group = 1
     ),
@@ -397,7 +402,7 @@ p <- ggplot(
   geom_point(
     data = mean_data,
     aes(
-      x = Day,
+      x = plot_day,
       y = mean_polyps
     ),
     inherit.aes = FALSE,
@@ -408,7 +413,7 @@ p <- ggplot(
   # Phase labels
   annotate(
     "text",
-    x = 3.5,
+    x = 1.5,
     y = Inf,
     label = "Exposure",
     vjust = 1.5,
@@ -418,7 +423,7 @@ p <- ggplot(
   
   annotate(
     "text",
-    x = 8,
+    x = 6,
     y = Inf,
     label = "Recovery",
     vjust = 1.5,
@@ -428,7 +433,7 @@ p <- ggplot(
   
   annotate(
     "text",
-    x = 13,
+    x = 11,
     y = Inf,
     label = "Post-recovery",
     vjust = 1.5,
@@ -441,7 +446,7 @@ p <- ggplot(
   ) +
   
   scale_x_continuous(
-    breaks = 1:15
+    breaks = -1:15
   ) +
   
   scale_colour_brewer(

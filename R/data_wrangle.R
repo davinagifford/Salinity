@@ -66,6 +66,10 @@ polyps <- polyps %>%
     )
   ) 
 
+
+
+  
+
 # insert row of missing data
 missing_dat <- polyps[18,]
 
@@ -84,7 +88,7 @@ polyps <- polyps %>%
 polyps_ordered <- polyps %>% 
   filter(replicate != "6 (spare)") %>%
   mutate(replicate = as.numeric(replicate)) %>%
-  mutate(phase = case_when(Day <= 2 ~ "Acclimation",
+  mutate(phase = case_when(Day <= 1 ~ "Acclimation",
                            Day <= 6 ~ "Exposure",
                            Day <= 10 ~ "Recovery",
                            Day < 16 ~ "Post-Recovery")) %>% 
