@@ -508,7 +508,7 @@ autocorrelation_results <- map_dfr(
     idx <- idx[order(polyp_data$Day[idx])]
     
     residual_subset <- recalculateResiduals(
-      res_poisson,
+      res_5,
       sel = idx
     )
     

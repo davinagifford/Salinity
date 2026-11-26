@@ -28,7 +28,7 @@ The analysis evolved through several model formulations as issues with overdispe
 ## Model development summary
 
 | Model | Purpose | Outcome | Decision |
-|------------------|------------------|------------------|------------------|
+|----|----|----|----|
 | M1 | Phase-based GLMM | Unstable estimates for 5 ppt due to complete absence of post-recovery polyps | Modified |
 | M2 | Account for initial abundance | Same estimation problem remained | Modified |
 | M3 | Piecewise slopes | Improved fit and reduced instability | Extended |
@@ -508,7 +508,7 @@ autocorrelation_results <- lapply(
     
     # Extract residuals for this replicate
     res_subset <- recalculateResiduals(
-      res_corrected,
+      res_5,
       sel = idx
     )
     
@@ -608,6 +608,13 @@ summary(m7)
 ## Diagnostics
 
 ```{r}
+# Repeat DHARMa diagnostics
+set.seed(123)
+
+res_7 <- simulateResiduals(
+  m7,
+  n = 1000
+)
 testUniformity(res_7)
 testDispersion(res_7)
 testZeroInflation(res_7)
@@ -733,7 +740,7 @@ Statistical significance showed moderate sensitivity to exclusion of individual 
 Model 5:
 
 - produced stable estimates,
-- avoided separation problems caused by complete mortality in the 5 ppt treatment,
+- avoided problems caused by complete mortality in the 5 ppt treatment,
 - showed acceptable dispersion and zero-inflation diagnostics,
 - retained biological interpretability,
 - was supported by sensitivity analyses,
@@ -745,12 +752,12 @@ Therefore, Model 5 was considered the most parsimonious and interpretable repres
 
 # Questions for Discussion
 
-1.  Is Model 5 the most appropriate balance between biological realism and statistical stability?
+1.  Do you agree that model 5 is the most appropirate?
 
-2.  Should the residual heterogeneity be considered sufficiently minor to proceed with inference?
+2.  Should the residual heterogeneity be considered sufficiently minor to proceed with analysis?
 
-3.  How should the complete collapse of the 5 ppt treatment be presented in the thesis?
+3.  How should I deal with the complete collapse of the 5 ppt treatment ?
 
-4.  Should the random-slope model be presented as a formal sensitivity analysis or moved to supplementary material?
+4.  Should model 8 be presented as a formal sensitivity analysis or moved to supplementary material?
 
-5.  Are there additional robustness checks that would strengthen confidence in the conclusions?
+5.  Are there any other checks or tests I should do?
