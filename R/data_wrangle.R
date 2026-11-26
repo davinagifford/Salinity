@@ -19,7 +19,7 @@ treatments <- read.csv("data/treatment_data.csv")
 # update treatment data 
 
 treatments <- treatments %>% 
-  mutate(Treatment = case_when(Treatment == "10" ~ "10 ppt",
+  mutate(salinity_level = case_when(Treatment == "10" ~ "10 ppt",
                                Treatment == "20" ~ "20 ppt",
                                Treatment == "15" ~ "15 ppt",
                                Treatment == "5" ~ "5 ppt",

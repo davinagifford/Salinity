@@ -1,0 +1,756 @@
+---
+title: "Longitudinal Analysis of Polyp Abundance"
+subtitle: "Model Development and Selection"
+author: "Davina Gifford"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+    number-sections: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Aim
+
+The objective of this analysis was to determine how polyp abundance changed throughout the experiment and whether temporal trajectories differed among salinity treatments.
+
+Specifically, I wanted to ask:
+
+> How did polyp abundance change during exposure, salinity restoration, and post-recovery, and were these changes treatment dependent?
+
+The analysis evolved through several model formulations as issues with overdispersion, zero inflation, complete separation and temporal structure became apparent.
+
+## Model development summary
+
+| Model | Purpose | Outcome | Decision |
+|------------------|------------------|------------------|------------------|
+| M1 | Phase-based GLMM | Unstable estimates for 5 ppt due to complete absence of post-recovery polyps | Modified |
+| M2 | Account for initial abundance | Same estimation problem remained | Modified |
+| M3 | Piecewise slopes | Improved fit and reduced instability | Extended |
+| M4 | Full phase-specific slopes | Post-recovery slope for 5 ppt not estimable because all observations were zero | Modified |
+| M5 | Address non-estimable 5 ppt slope | Stable estimates and interpretable results | Preferred |
+| M8 | Random-slope sensitivity | Similar conclusions | Sensitivity analysis |
+
+# Set up file
+
+### Load libraries
+
+```{r}
+# load libaries
+library(tidyverse)
+library(glmmTMB)
+library(DHARMa)
+```
+
+### Load data
+
+```{r}
+data <- readRDS("var/polyp_tidy.rds")
+treatment_data <- readRDS("var/treatment_tidy.rds")
+
+# combine into a single df for analysis
+
+data <- data %>%
+  left_join(
+    treatment_data,
+    by = c(
+      "salinity_level" = "salinity_level",
+      "Day" = "Day"
+    )
+  )
+```
+
+### Data wrangle for analysis
+
+```{r}
+
+polyp_data <- data %>%
+  group_by(salinity_level, replicate) %>%
+  mutate(
+    dead = replace_na(dead, 0), # replace empty cells with zeroes
+    
+    # Initial population
+    initial_polyps = polyp_number[Day == 1][1]) %>%  # create a new column with the initial polyp numbers
+    
+  # budding ratio
+  mutate(
+    budding_ratio = if_else(
+      polyp_number > 0,
+      replace_na(buds, 0) / polyp_number,
+      NA_real_
+    )
+  ) %>% 
+  ungroup()
+
+# Update polyp data
+polyp_data <- polyp_data %>% 
+  mutate(across(where(is.character), as.factor), # set factors
+         plot_day = Day - 2, # create a column for plotting the data that reflects the exposure day as Day Zero
+         replicate_id = interaction(salinity_level, replicate) # create unique ids for each replicate
+  )
+
+
+# remove the baseline data for analysis
+polyp_data <- polyp_data %>% 
+  filter(Day > 1) %>% 
+  droplevels()
+```
+
+# Data Exploration
+
+## Summary Statistics
+
+```{r}
+polyp_data %>%
+  group_by(salinity_level) %>%
+  summarise(
+    Mean = mean(polyp_number, na.rm = TRUE),
+    Variance = var(polyp_number, na.rm = TRUE),
+    Zeros = sum(polyp_number == 0, na.rm = TRUE), # understand number of zeroes in case need to consider zero inflation factors during modelling. 
+    Observations = n(),
+    .groups = "drop"
+  )
+```
+
+| Salinity Level     | Mean | Variance | Zeros | Observations |
+|--------------------|-----:|---------:|------:|-------------:|
+| 5 ppt              | 0.64 |     3.14 |    37 |           45 |
+| 10 ppt             | 4.71 |     65.6 |    15 |           45 |
+| 15 ppt             | 7.64 |     34.1 |     9 |           45 |
+| 20 ppt             | 15.4 |      129 |     0 |           45 |
+| Control            | 13.9 |     67.9 |     0 |           45 |
+| Procedural Control | 26.2 |      223 |     0 |           45 |
+
+## Initial Observations
+
+In addition to the combination of fixed and random effects, the number of zeroes, and the repeated measures meant I wanted to look into GLMMs to properly model the data.
+
+# Initial Modelling Strategy
+
+## Model 1: Salinity × Phase GLMM
+
+### Objective
+
+The first model treated the experiment as three discrete phases:
+
+- Exposure
+- Recovery
+- Post-recovery
+
+and tested whether treatment responses differed among phases.
+
+Response variable is untransformed polyp numbers, as the glmm uses a poisson distribution with a log link. Poisson was chosen as polyp_number is a count.
+
+Survival and relative abundance were not suitable as data for deaths was incomplete.
+
+### Model
+
+```{r}
+m1 <- glmmTMB(
+  polyp_number ~ salinity_level * phase +
+    (1 | replicate_id),
+  family = poisson(link = "log"),
+  data = polyp_data)
+
+summary(m1)
+```
+
+### Diagnostics
+
+```{r}
+simulationOutput <- simulateResiduals(fittedModel = m1, plot = FALSE)
+plotQQunif(simulationOutput, testUniformity = TRUE, testOutliers = TRUE, testDispersion = TRUE)
+```
+
+### Interpretation
+
+This model identified several significant treatment-by-phase interactions. However, coefficients associated with the 5 ppt treatment were unstable and had extremely large standard errors.
+
+In addition, the diagnostics showed that there was significant issues with outliers, and the AIC value was quite large.
+
+### Conclusion
+
+Although biologically sensible, the phase-based formulation failed to adequately handle the extreme behaviour of the 5 ppt treatment.
+
+------------------------------------------------------------------------
+
+# Accounting for Initial Polyp Abundance
+
+## Why Modify the Model?
+
+Cultures differed in their starting abundance.
+
+These differences may influence later abundance trajectories and therefore represent an important source of variation.
+
+Rather than use an offset, I treated initial abundance as a covariate because abundance trajectories were not necessarily proportional to starting abundance.
+
+## Model 2
+
+```{r}
+m2 <- glmmTMB(
+  polyp_number ~ salinity_level * phase +
+    log(initial_polyps) +
+    (1 | replicate_id),
+  family = poisson(link = "log"),
+  data = polyp_data)
+
+summary(m2)
+```
+
+### Diagnostics
+
+```{r}
+simulationOutput2 <- simulateResiduals(fittedModel = m2, plot = FALSE)
+plotQQunif(simulationOutput2, testUniformity = TRUE, testOutliers = TRUE, testDispersion = TRUE)
+```
+
+### Interpretation
+
+Initial abundance was a significant predictor of later abundance.
+
+However:
+
+- treatment effects remained largely unchanged,
+- separation issues associated with the 5 ppt treatment persisted.
+- AIC value improved but was still quite large.
+
+### Conclusion
+
+Including starting abundance improved biological realism but did not resolve the underlying modelling problem.
+
+------------------------------------------------------------------------
+
+# Moving to a Piecewise Framework
+
+## Why Change the Temporal Structure?
+
+The experiment was designed around three biologically distinct periods:
+
+1.  Salinity exposure
+2.  Salinity restoration
+3.  Post-recovery
+
+The phase model estimated differences among phases but not rates of change within each phase.
+
+A piecewise framework would allow separate slopes to be estimated for each period.
+
+# Model 3: Piecewise Slopes
+
+### Data wrangle
+
+```{r}
+# create variables for each phase
+polyp_data <- polyp_data %>%
+  mutate(
+    t_exp = pmin(pmax(Day - 1, 0), 5), # time for exposure phase
+    t_rec = pmin(pmax(Day - 6, 0), 4), # time for recovery phase
+    t_post = pmax(Day - 10, 0) # time for post-recovery phase
+  )
+
+```
+
+## Model
+
+```{r}
+m3 <- glmmTMB(
+  polyp_number ~
+    salinity_level * t_exp +
+    t_rec +
+    t_post +
+    log(initial_polyps) +
+    (1 | replicate_id),
+  family = poisson(link = "log"),
+  data = polyp_data)
+
+summary(m3)
+```
+
+### Interpretation
+
+Model fit improved substantially.
+
+The piecewise structure appeared to capture temporal dynamics more effectively than the phase-based model.
+
+The problematic behaviour of the 5 ppt treatment was reduced.
+
+### Limitation
+
+This model did not account for interactions or
+
+### Conclusion
+
+The piecewise framework appeared preferable and warranted further development.
+
+# Compare the piecewise model with the phase based model.
+
+## Results
+
+```{r}
+AIC(m2, m3)
+```
+
+The AIC for the piecewise model was a lot better than the phase based model, but there is still room for improvement.
+
+------------------------------------------------------------------------
+
+# Model 4: Treatment-Specific Slopes in All Phases
+
+## Objective
+
+Add in the interactions.
+
+## Model
+
+```{r}
+m4 <- glmmTMB(
+  polyp_number ~
+    salinity_level * (t_exp + t_rec + t_post) +
+    log(initial_polyps) +
+    (1 | replicate_id),
+  family = poisson(link = "log"),
+  data = polyp_data)
+
+summary(m4)
+```
+
+### Interpretation
+
+Fit improved further.
+
+However, a major issue re-emerged:
+
+``` text
+salinity_level5 ppt:t_post
+Estimate = -16.70
+SE = 3764.21
+```
+
+This occurred because all post-recovery observations in the 5 ppt treatment were zero.
+
+The model was attempting to estimate a post-recovery trend despite complete absence of variation.
+
+### Conclusion
+
+This model worked slightly better than the previous, but the 5ppt values are still causing issues.
+
+------------------------------------------------------------------------
+
+# Model 5: Addressing Complete Separation
+
+## Rationale
+
+The instability in Model 4 was caused entirely by the 5 ppt treatment during post-recovery.
+
+To improve the analysis for the post-recovery phase, the 5ppt values were removed.
+
+### Data wrangle
+
+```{r}
+# remove 5ppt from the analysis
+polyp_data <- polyp_data %>% 
+  mutate(
+    post_10 = t_post * (salinity_level == "10 ppt"),
+    post_15 = t_post * (salinity_level == "15 ppt"),
+    post_20 = t_post * (salinity_level == "20 ppt"),
+    post_control =
+      t_post * (salinity_level == "Control"),
+    post_procedural =
+      t_post *
+      (salinity_level == "Procedural control")
+  )
+```
+
+## Model
+
+```{r}
+m5 <- glmmTMB(
+  polyp_number ~
+    salinity_level * (t_exp + t_rec) +
+    post_10 +
+    post_15 +
+    post_20 +
+    post_control +
+    post_procedural +
+    log(initial_polyps) +
+    (1 | replicate_id),
+  family = poisson(link = "log"),
+  data = polyp_data)
+
+summary(m5)
+```
+
+## Interpretation
+
+This model no longer had the 5ppt issues, and results are clear. AIC is still high at 1210.
+
+### Conclusion
+
+Model 5 was retained as the principal candidate model.
+
+------------------------------------------------------------------------
+
+# Diagnostic Assessment of Model 5
+
+Run diagnostics to check assumptions.
+
+## Model convergence
+
+```{r}
+m5$fit$convergence
+m5$sdr$pdHess
+```
+
+## Residual Diagnostics
+
+```{r}
+res_5 <- simulateResiduals(
+  fittedModel = m5,
+  n = 1000
+)
+
+```
+
+### Dispersion
+
+```{r}
+testDispersion(res_5)
+```
+
+Interpretation:
+
+- No evidence of overdispersion.
+
+### Zero Inflation
+
+```{r}
+testZeroInflation(res_5)
+```
+
+Interpretation:
+
+- No evidence of excess zero inflation.
+
+### Uniformity
+
+```{r}
+testUniformity(res_5)
+```
+
+Interpretation:
+
+- Some residual lack of fit remained.
+
+## Diagnostic Plots
+
+```{r}
+plot(res_5)
+```
+
+## Heterogeneity of Variance
+
+Levene's test indicated heterogeneity among treatments.
+
+```{r}
+plotResiduals(
+  res_5,
+  form = polyp_data$Day
+)
+
+plotResiduals(
+  res_5,
+  form = polyp_data$salinity_level
+)
+
+
+testCategorical(
+  res_5,
+  catPred = polyp_data$salinity_level
+)
+```
+
+### Follow-up Analysis
+
+I attempted to model treatment-specific dispersion.
+
+### Outcome
+
+Model fit and diagnostics were not improved.
+
+### Decision
+
+Retain the simpler formulation.
+
+------------------------------------------------------------------------
+
+# Temporal Autocorrelation
+
+## Question
+
+Do repeated observations within replicates show evidence of temporal autocorrelation?
+
+## Results
+
+```{r}
+replicate_ids <- unique(polyp_data$replicate_id)
+
+autocorrelation_results <- lapply(
+  replicate_ids,
+  function(id) {
+    
+    idx <- which(
+      polyp_data$replicate_id == id
+    )
+    
+    # Extract residuals for this replicate
+    res_subset <- recalculateResiduals(
+      res_corrected,
+      sel = idx
+    )
+    
+    # Test temporal autocorrelation
+    testTemporalAutocorrelation(
+      res_subset,
+      time = polyp_data$Day[idx],
+      plot = FALSE
+    )
+  }
+)
+
+# Extract p-values
+acf_pvalues <- sapply(
+  autocorrelation_results,
+  function(x) x$p.value
+)
+
+summary(acf_pvalues)
+```
+
+The median is 0.378 showing that there is no autocorrelation. however the min is 0.0001 indicating there is some autocorrelation happening.
+
+Conducted tests to disccover how many and which ones.
+
+```{r}
+# Number of significant tests
+sum(acf_pvalues < 0.05, na.rm = TRUE)
+
+# Proportion of significant tests
+mean(acf_pvalues < 0.05, na.rm = TRUE)
+
+# Identify affected replicates
+data.frame(
+  replicate_id = replicate_ids,
+  p_value = acf_pvalues
+) %>%
+  filter(p_value < 0.05)
+
+
+# Adjust p-values for multiple testing
+acf_adjusted <- p.adjust(
+  acf_pvalues,
+  method = "BH"
+)
+
+# Create summary table
+acf_results <- data.frame(
+  replicate_id = replicate_ids,
+  p_value = acf_pvalues,
+  adjusted_p = acf_adjusted
+)
+
+# Display smallest p-values
+acf_results %>%
+  arrange(p_value) %>%
+  print()
+
+# Number remaining significant
+sum(acf_adjusted < 0.05, na.rm = TRUE)
+
+```
+
+Only one replicate showed evidence of significant autocorrelation following correction for multiple testing.
+
+### Significant Replicate
+
+- Procedural Control 2
+
+### Interpretation
+
+Temporal autocorrelation does not appear to be a widespread feature of the dataset.
+
+------------------------------------------------------------------------
+
+# Sensitivity Analysis: Removing the Influential Replicate
+
+## Rationale
+
+Because Procedural Control 2 showed evidence of temporal autocorrelation, I assessed whether it was disproportionately influencing model results.
+
+## Model
+
+```{r}
+m7 <- update(
+  m5,
+  data = polyp_data %>%
+    filter(
+      as.character(replicate_id) !=
+        "Procedural control.2"
+    ) %>%
+    droplevels())
+
+summary(m7)
+```
+
+## Diagnostics
+
+```{r}
+testUniformity(res_7)
+testDispersion(res_7)
+testZeroInflation(res_7)
+```
+
+## Interpretation
+
+Diagnostic results were essentially unchanged.
+
+### Conclusion
+
+The primary findings do not appear to depend on a single influential replicate, so this replicate should be retained in the model.
+
+------------------------------------------------------------------------
+
+# Model 8: Random-Slope Sensitivity Analysis
+
+## Rationale
+
+Model 5 assumed replicates differed only in intercept.
+
+A random-slope model allows replicates to have different temporal trajectories.
+
+## Model
+
+```{r}
+# Centre and scale experimental day
+polyp_data <- polyp_data %>%
+  mutate(
+    Day_scaled = (Day - mean(Day)) / sd(Day)
+  )
+
+
+m8 <- glmmTMB(
+  polyp_number ~
+    salinity_level * (t_exp + t_rec) +
+    post_10 +
+    post_15 +
+    post_20 +
+    post_control +
+    post_procedural +
+    log(initial_polyps) +
+    (1 + Day_scaled | replicate_id),
+  family = poisson(link = "log"),
+  data = polyp_data)
+
+summary(m8)
+```
+
+## Compare models
+
+```{r}
+AIC(m5, m8)
+```
+
+## Interpretation
+
+The random-slope model improved fit modestly.
+
+However:
+
+- treatment estimates were largely unchanged,
+- biological conclusions were unchanged,
+- residual issues remained,
+- random-effect correlations approached the boundary.
+
+### Conclusion
+
+The additional complexity did not change the interpretation..
+
+------------------------------------------------------------------------
+
+# Biological Conclusions Across Models
+
+A key objective was to determine whether conclusions were robust across alternative modelling approaches.
+
+## Consistent Findings
+
+### Exposure Phase
+
+- Polyp abundance declined most rapidly in the 5 ppt treatment.
+- Polyp abundance also declined substantially in the 10 ppt treatment.
+
+### Recovery Phase
+
+- The 10 ppt treatment continued to exhibit a more negative trajectory than the controls.
+
+### Post-Recovery Phase
+
+- The 10 ppt treatment exhibited the strongest increase in abundance.
+
+These patterns were observed consistently across model specifications.
+
+------------------------------------------------------------------------
+
+# Leave-One-Replicate-Out Sensitivity Analysis
+
+To assess robustness, a leave-one-replicate-out analysis was conducted.
+
+## Findings
+
+- All models converged successfully.
+- Recovery-phase slope differences remained negative in all refits.
+- Estimates ranged from −0.464 to −0.350.
+- Twenty-seven of thirty refits remained significant.
+
+## Interpretation
+
+The direction of the treatment effect was highly robust.
+
+Statistical significance showed moderate sensitivity to exclusion of individual cultures.
+
+------------------------------------------------------------------------
+
+# Final Model Selection
+
+## Preferred Model
+
+> **Model 5 was selected as the primary model for interpretation.**
+
+## Justification
+
+Model 5:
+
+- produced stable estimates,
+- avoided separation problems caused by complete mortality in the 5 ppt treatment,
+- showed acceptable dispersion and zero-inflation diagnostics,
+- retained biological interpretability,
+- was supported by sensitivity analyses,
+- produced conclusions broadly consistent with more complex alternatives.
+
+Although Model 8 achieved a slightly lower AIC, the increase in complexity did not substantially alter biological conclusions.
+
+Therefore, Model 5 was considered the most parsimonious and interpretable representation of the data.
+
+# Questions for Discussion
+
+1.  Is Model 5 the most appropriate balance between biological realism and statistical stability?
+
+2.  Should the residual heterogeneity be considered sufficiently minor to proceed with inference?
+
+3.  How should the complete collapse of the 5 ppt treatment be presented in the thesis?
+
+4.  Should the random-slope model be presented as a formal sensitivity analysis or moved to supplementary material?
+
+5.  Are there additional robustness checks that would strengthen confidence in the conclusions?
